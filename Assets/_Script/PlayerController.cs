@@ -1,5 +1,6 @@
-using UnityEngine;
+using Unity.Cinemachine; // 시네머신 API 접근용 (필수)
 using Unity.Netcode; // NGO 멀티플레이 필수 코어
+using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D))] // 이 스크립트를 넣으면 물리 엔진(Rigidbody2D)이 자동 장착됨
 public class PlayerController : NetworkBehaviour
@@ -15,7 +16,7 @@ public class PlayerController : NetworkBehaviour
 
     private Rigidbody2D rb;
     private Vector2 currentMoveInput;
-    private Vector2 mouseWorldPosition;
+    private Vector2 currentMouseScreenPosition; // 모니터 상의 마우스 픽셀 위치
     private Vector2 currentVelocity;
 
     // Start() 대신 NGO 멀티플레이 환경에서 생성될 때 호출되는 엔진 시동 함수
@@ -34,6 +35,14 @@ public class PlayerController : NetworkBehaviour
         // 리모컨(InputReader) 무전 연결
         inputReader.MoveEvent += OnMove;
         inputReader.LookEvent += OnLook;
+
+        // 카메라 추적 권한 가져오기 (인스펙터 연결 없이 맵에서 직접 수색)
+        CinemachineCamera vcam = FindAnyObjectByType<CinemachineCamera>();
+        if (vcam != null)
+        {
+            // 시네머신 렌즈의 추적(Follow) 대상을 내 기체의 위치(transform)로 고정!
+            vcam.Follow = transform;
+        }
     }
 
     public override void OnNetworkDespawn()
@@ -52,11 +61,11 @@ public class PlayerController : NetworkBehaviour
         currentMoveInput = moveInput.normalized;
     }
 
-    // InputReader에서 "마우스 이동함!" 무전이 오면 실행
+    // InputReader에서 "마우스 움직임!" 무전이 오면 실행
     private void OnLook(Vector2 mousePosition)
     {
-        // 모니터(Screen) 좌표를 게임 세상(World) 좌표로 변환
-        mouseWorldPosition = mainCamera.ScreenToWorldPoint(mousePosition);
+        // 월드 좌표 변환을 여기서 하지 않고, 모니터 상의 X, Y 픽셀 위치만 기억해 둠!
+        currentMouseScreenPosition = mousePosition;
     }
 
     // 물리 연산은 반드시 FixedUpdate에서 처리
@@ -83,12 +92,13 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleRotation()
     {
+        // [핵심] 렌즈(카메라)가 이동 중이므로, 매 프레임마다 픽셀 좌표를 월드 좌표로 실시간 재계산!
+        Vector2 mouseWorldPosition = mainCamera.ScreenToWorldPoint(currentMouseScreenPosition);
+
         // 마우스 방향으로 기체 상체 회전
         Vector2 lookDir = mouseWorldPosition - rb.position;
         float angle = Mathf.Atan2(lookDir.y, lookDir.x) * Mathf.Rad2Deg;
 
-        // 0.0.1 데모 확인용: 하얀 네모가 마우스를 바라보게 Z축 기준 회전
-        // (나중에 아트 리소스가 들어가면 좌우 반전(Flip) 로직으로 교체될 부분)
         rb.rotation = angle - 90f;
     }
 }
